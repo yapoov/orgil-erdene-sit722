@@ -1,0 +1,76 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - testing
+
+env:
+  REGISTRY_NAME: orgil.azurecr.io  
+  IMAGE_TAG: latest
+  FRONTEND_IMAGE: frontend
+  CUSTOMER_SERVICE_IMAGE: customer_service
+  PRODUCT_SERVICE_IMAGE: product_service
+  ORDER_SERVICE_IMAGE: order_service
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Backend testing setup
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install backend dependencies
+        run: |
+          for service in backend/*_service; do
+            pip install -r $service/requirements-dev.txt
+          done
+
+      - name: Run backend tests
+        run: |
+          for service in backend/*_service; do
+            pytest $service/tests
+          done
+
+      # Frontend testing setup
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci || true  # If frontend has a package.json
+          cd ..
+
+      - name: Run frontend tests
+        run: echo "No frontend tests implemented yet"
+
+      # Login to Azure Container Registry
+      - name: Login to ACR
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ env.REGISTRY_NAME }}
+          username: ${{ secrets.AZURE_ACR_USERNAME }}
+          password: ${{ secrets.AZURE_ACR_PASSWORD }}
+
+      # Build and push Docker images only if tests pass
+      - name: Build and push Docker images
+        run: |
+          docker build -t $REGISTRY_NAME/$FRONTEND_IMAGE:$IMAGE_TAG ./frontend
+          docker build -t $REGISTRY_NAME/$CUSTOMER_SERVICE_IMAGE:$IMAGE_TAG ./backend/customer_service
+          docker build -t $REGISTRY_NAME/$PRODUCT_SERVICE_IMAGE:$IMAGE_TAG ./backend/product_service
+          docker build -t $REGISTRY_NAME/$ORDER_SERVICE_IMAGE:$IMAGE_TAG ./backend/order_service
+
+          docker push $REGISTRY_NAME/$FRONTEND_IMAGE:$IMAGE_TAG
+          docker push $REGISTRY_NAME/$CUSTOMER_SERVICE_IMAGE:$IMAGE_TAG
+          docker push $REGISTRY_NAME/$PRODUCT_SERVICE_IMAGE:$IMAGE_TAG
+          docker push $REGISTRY_NAME/$ORDER_SERVICE_IMAGE:$IMAGE_TAG
