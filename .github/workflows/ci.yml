@@ -54,13 +54,15 @@ jobs:
             pip install -r $service/requirements-dev.txt
           done
 
-      - name: Wait for PostgreSQL
+
+      - name: Wait for PostgreSQL to be ready
         run: |
-          until pg_isready -h localhost -p 5432 -U $POSTGRES_USER; do
-            echo "Waiting for PostgreSQL..."
-            sleep 2
+          echo "Checking PostgreSQL availability..."
+          for i in {1..10}; do
+            nc -z postgres 5432 && echo "✅ PostgreSQL is ready" && break
+            echo "Waiting for PostgreSQL... ($i/10)"
+            sleep 3
           done
-          echo "PostgreSQL is ready!"
 
       - name: Run backend tests
         env:
