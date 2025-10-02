@@ -26,7 +26,7 @@ jobs:
       - name: Create staging environment
         run: |
           kubectl create namespace staging || true
-          kubectl apply -f k8s/staging/ -n staging
+          kubectl apply -f k8s/ -n staging
 
       - name: Deploy services to staging
         run: |
