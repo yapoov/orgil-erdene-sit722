@@ -38,10 +38,10 @@ jobs:
       # --- Deploy to Production Namespace ---
       - name: Deploy all Kubernetes manifests
         run: |
-          kubectl apply -f k8s/ -n production --validate=false
+          kubectl apply -f k8s/ --validate=false
 
       # --- Verify production deployment ---
       - name: Check production deployment status
         run: |
-          kubectl get pods -n production
-          kubectl get svc -n production
+          kubectl get pods 
+          kubectl get svc 
