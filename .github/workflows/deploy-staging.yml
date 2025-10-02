@@ -1,48 +1,47 @@
-name: Deploy to Staging
+name: Deploy to AKS (Production)
 
 on:
-  workflow_run:
-    workflows: ["CI Pipeline"]
-    types:
-      - completed
+  push:
+    branches:
+      - main
 
 jobs:
-  deploy-staging:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-
-      - name: Azure Login
+      # --- Azure Authentication ---
+      - name: Login to Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Create staging environment
-        run: |
-          kubectl create namespace staging || true
-          kubectl apply -f k8s/ -n staging
+      # --- Get AKS Context ---
+      - name: Set AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          cluster-name: orgil-aks
+          resource-group: Deakin
 
-      - name: Deploy services to staging
+      # --- Update image references to production images ---
+      - name: Update image references
         run: |
-          kubectl set image deployment/frontend frontend=${{ env.REGISTRY_NAME }}/frontend:${{ env.IMAGE_TAG }} -n staging
-          kubectl set image deployment/customer-service customer-service=${{ env.REGISTRY_NAME }}/customer_service:${{ env.IMAGE_TAG }} -n staging
-          kubectl set image deployment/product-service product-service=${{ env.REGISTRY_NAME }}/product_service:${{ env.IMAGE_TAG }} -n staging
-          kubectl set image deployment/order-service order-service=${{ env.REGISTRY_NAME }}/order_service:${{ env.IMAGE_TAG }} -n staging
+          sed -i 's|image: .*frontend:.*|image: orgil.azurecr.io/frontend:latest|g' k8s/frontend.yaml
+          sed -i 's|image: .*customer-service:.*|image: orgil.azurecr.io/customer-service:latest|g' k8s/customer-service.yaml
+          sed -i 's|image: .*order-service:.*|image: orgil.azurecr.io/order-service:latest|g' k8s/order-service.yaml
+          sed -i 's|image: .*product-service:.*|image: orgil.azurecr.io/product-service:latest|g' k8s/product-service.yaml
 
-      - name: Wait and run acceptance test (optional)
+      # --- Deploy to Production Namespace ---
+      - name: Deploy all Kubernetes manifests
         run: |
-          echo "Waiting for staging services to start..."
-          sleep 60
-          echo "Running acceptance tests..."
-          # Replace with actual acceptance test commands or API checks
+          kubectl apply -f k8s/ -n production --validate=false
 
-      - name: Destroy staging environment
-        if: always()
+      # --- Verify production deployment ---
+      - name: Check production deployment status
         run: |
-          kubectl delete namespace staging
+          kubectl get pods -n production
+          kubectl get svc -n production
