@@ -6,22 +6,43 @@ on:
       - testing
 
 env:
-  REGISTRY_NAME: orgil.azurecr.io  
+  REGISTRY_NAME: youracrname.azurecr.io   # Replace with your ACR name
   IMAGE_TAG: latest
   FRONTEND_IMAGE: frontend
   CUSTOMER_SERVICE_IMAGE: customer_service
   PRODUCT_SERVICE_IMAGE: product_service
   ORDER_SERVICE_IMAGE: order_service
 
+  # Database connection info for testing
+  POSTGRES_USER: testuser
+  POSTGRES_PASSWORD: testpassword
+  POSTGRES_DB: testdb
+  POSTGRES_HOST: localhost
+  DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+        options: >-
+          --health-cmd "pg_isready -U $POSTGRES_USER"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Backend testing setup
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -33,13 +54,27 @@ jobs:
             pip install -r $service/requirements-dev.txt
           done
 
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U $POSTGRES_USER; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+          echo "PostgreSQL is ready!"
+
       - name: Run backend tests
+        env:
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_HOST: ${{ env.POSTGRES_HOST }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           for service in backend/*_service; do
-            pytest $service/tests
+            echo "Running tests for $service..."
+            pytest $service/tests --maxfail=1 --disable-warnings -q
           done
 
-      # Frontend testing setup
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -48,21 +83,19 @@ jobs:
       - name: Install frontend dependencies
         run: |
           cd frontend
-          npm ci || true  # If frontend has a package.json
+          npm ci || true  # Skip if no package.json
           cd ..
 
       - name: Run frontend tests
         run: echo "No frontend tests implemented yet"
 
-      # Login to Azure Container Registry
-      - name: Login to ACR
+      - name: Login to Azure Container Registry
         uses: azure/docker-login@v2
         with:
           login-server: ${{ env.REGISTRY_NAME }}
           username: ${{ secrets.AZURE_ACR_USERNAME }}
           password: ${{ secrets.AZURE_ACR_PASSWORD }}
 
-      # Build and push Docker images only if tests pass
       - name: Build and push Docker images
         run: |
           docker build -t $REGISTRY_NAME/$FRONTEND_IMAGE:$IMAGE_TAG ./frontend
