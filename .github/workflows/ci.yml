@@ -6,7 +6,7 @@ on:
       - testing
 
 env:
-  REGISTRY_NAME: youracrname.azurecr.io   # Replace with your ACR name
+  REGISTRY_NAME: orgil.azurecr.io 
   IMAGE_TAG: latest
   FRONTEND_IMAGE: frontend
   CUSTOMER_SERVICE_IMAGE: customer_service
